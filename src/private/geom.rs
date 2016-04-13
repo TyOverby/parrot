@@ -1,11 +1,27 @@
-pub trait Number: ::num::traits::Float + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug {}
+use std::ops::{Add, Sub};
+
+pub trait Number: ::num::traits::Float + ::num::traits::FromPrimitive + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug {}
 
 pub trait DistanceTo<T, N: Number> {
     fn distance_squared(self, other: T) -> N;
+    fn distance(self, other: T) -> N where Self: Sized {
+        self.distance_squared(other).sqrt()
+    }
+}
+
+pub trait Bounded<T: Number> {
+    fn aabb(self) -> Rect<T>;
 }
 
 pub trait CanContain<T> {
     fn contains(self, T) -> bool;
+}
+
+pub trait AlmostEq<N: Number> {
+    fn almost_eq_epsilon(self, Self, N) -> bool;
+    fn almost_eq(self, other: Self) -> bool where Self: Sized {
+        self.almost_eq_epsilon(other, N::min_positive_value() * N::from_u64(100).unwrap())
+    }
 }
 
 pub struct LinesFromPolyIterator<'a, T: Number + 'a> {
@@ -13,22 +29,7 @@ pub struct LinesFromPolyIterator<'a, T: Number + 'a> {
     first_and_last: Option<(Point<T>, Point<T>)>,
 }
 
-impl <T: ::num::traits::Float + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug> Number for T {}
-
-pub fn distance_squared<A, B, N>(a: A, b: B) -> N
-where A: DistanceTo<B, N>, N: Number {
-    a.distance_squared(b)
-}
-
-pub fn distance<A, B, N>(a: A, b: B) -> N
-where A: DistanceTo<B, N>, N: Number {
-    distance_squared(a, b).sqrt()
-}
-
-pub fn contains<A, B>(a: A, b: B) -> bool
-where A: CanContain<B> {
-    a.contains(b)
-}
+impl <T: ::num::traits::Float + ::num::traits::FromPrimitive + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug> Number for T {}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Point<T: Number>(pub T, pub T);
@@ -44,6 +45,16 @@ pub struct Rect<T: Number>(pub Point<T>, pub Point<T>);
 pub struct Poly<T: Number> {
     points: Vec<Point<T>>,
     aabb: Rect<T>,
+}
+
+impl <T: Number> Vector<T> {
+    pub fn cross(self, Vector(ox, oy): Vector<T>) -> T {
+        self.0 * oy - self.1 * ox
+    }
+
+    pub fn dot(self, Vector(ox, oy): Vector<T>) -> T {
+        self.0 * ox + self.1 * oy
+    }
 }
 
 impl <T: Number> Rect<T> {
@@ -65,6 +76,27 @@ impl <T: Number> Rect<T> {
         }
         if py > bottom_right.1 {
             (self.1).1 = py;
+        }
+    }
+}
+
+impl <T: Number> LineSegment<T> {
+    pub fn intersection(self, other: LineSegment<T>) -> Option<Point<T>> {
+        let LineSegment(Point(p0_x, p0_y), Point(p1_x, p1_y)) = self;
+        let LineSegment(Point(p2_x, p2_y), Point(p3_x, p3_y)) = other;
+
+        let s1_x = p1_x - p0_x;
+        let s1_y = p1_y - p0_y;
+        let s2_x = p3_x - p2_x;
+        let s2_y = p3_y - p2_y;
+
+        let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+        let t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+        if s >= T::zero() && s <= T::one() && t >= T::zero() && t <= T::one() {
+            Some(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
+        } else {
+            None
         }
     }
 }
@@ -107,7 +139,7 @@ impl <'a, T: Number> CanContain<Point<T>> for Rect<T> {
 
 impl <'a, T: Number> CanContain<Point<T>> for &'a Poly<T> {
     fn contains(self, p: Point<T>) -> bool {
-        if !contains(self.aabb, p) { return false; }
+        if !self.aabb.contains(p) { return false; }
 
         let Point(testx, testy) = p;
         let mut inside = false;
@@ -131,17 +163,17 @@ impl <T: Number> DistanceTo<Point<T>, T> for Point<T> {
 impl <T:Number> DistanceTo<LineSegment<T>, T> for Point<T> {
     fn distance_squared(self, LineSegment(v, w): LineSegment<T>) -> T {
         use ::num::{Zero, One};
-        let l2 = distance_squared(v, w);
+        let l2 = v.distance_squared(w);
         if l2 == Zero::zero() { //  TODO: epsilon
-            return distance_squared(self, v);
+            return self.distance_squared(v);
         }
         let t = ((self.0 - v.0) * (w.0 - v.0) + (self.1 - v.1) * (w.1 - v.1)) / l2;
         if t < Zero::zero() {
-            distance_squared(self, v)
+            self.distance_squared(v)
         } else if t > One::one() {
-            distance_squared(self, w)
+            self.distance_squared(w)
         } else {
-            distance_squared(self, Point (
+            self.distance_squared(Point(
                 v.0 + t * (w.0 - v.0),
                 v.1 + t * (w.1 - v.1)
             ))
@@ -152,7 +184,7 @@ impl <T:Number> DistanceTo<LineSegment<T>, T> for Point<T> {
 
 impl <T: Number> DistanceTo<Point<T>, T> for LineSegment<T> {
     fn distance_squared(self, point: Point<T>) -> T {
-        distance_squared(point, self)
+        point.distance_squared(self)
     }
 }
 
@@ -160,7 +192,7 @@ impl <'a, T: Number> DistanceTo<&'a Poly<T>, T> for Point<T> {
     fn distance_squared(self, polygon: &Poly<T>) -> T {
         let mut min_dist = T::infinity();
         for line in polygon.lines() {
-            min_dist = min_dist.min(distance_squared(self, line));
+            min_dist = min_dist.min(self.distance_squared(line));
         }
         min_dist
     }
@@ -174,5 +206,102 @@ impl <'a, T: Number> Iterator for LinesFromPolyIterator<'a, T> {
         } else {
             self.first_and_last.take().map(|(a, b)| LineSegment(a, b))
         }
+    }
+}
+
+impl <T: Number> Bounded<T> for Rect<T> {
+    fn aabb(self) -> Rect<T> {
+        self
+    }
+}
+
+impl <T: Number> Bounded<T> for Point<T> {
+    fn aabb(self) -> Rect<T> {
+        Rect::null_at(self)
+    }
+}
+
+impl <T: Number> Bounded<T> for LineSegment<T> {
+    fn aabb(self) -> Rect<T> {
+        let LineSegment(p1, p2) = self;
+        let mut res = Rect::null_at(p1);
+        res.expand_to_include(p2);
+        res
+    }
+}
+
+impl <'a, T: Number> Bounded<T> for &'a Poly<T> {
+    fn aabb(self) -> Rect<T> {
+        self.aabb
+    }
+}
+
+impl <T: Number> Sub for Point<T> {
+    type Output = Vector<T>;
+    fn sub(self, Point(ox, oy): Point<T>) -> Vector<T> {
+        let Point(sx, sy) = self;
+        Vector(sx - ox, sy - oy)
+    }
+}
+
+impl <T: Number> Add<Vector<T>> for Point<T> {
+    type Output = Point<T>;
+    fn add(self, Vector(ox, oy): Vector<T>) -> Point<T> {
+        let Point(sx, sy) = self;
+        Point(sx + ox, sy + oy)
+    }
+}
+
+impl <T: Number> Sub<Vector<T>> for Point<T> {
+    type Output = Point<T>;
+    fn sub(self, Vector(ox, oy): Vector<T>) -> Point<T> {
+        let Point(sx, sy) = self;
+        Point(sx - ox, sy - oy)
+    }
+}
+
+impl <T: Number> AlmostEq<T> for T {
+    fn almost_eq_epsilon(self, other: T, epsilon: T) -> bool {
+        (self - other).abs() < epsilon 
+    }
+}
+
+impl <T: Number> AlmostEq<T> for Point<T> {
+    fn almost_eq_epsilon(self, Point(ox, oy): Point<T>, epsilon: T) -> bool {
+        let Point(sx, sy) = self;
+        sx.almost_eq_epsilon(ox, epsilon) &&
+        sy.almost_eq_epsilon(oy, epsilon)
+    }
+}
+
+impl <T: Number> AlmostEq<T> for Vector<T> {
+    fn almost_eq_epsilon(self, Vector(ox, oy): Vector<T>, epsilon: T) -> bool {
+        let Vector(sx, sy) = self;
+        sx.almost_eq_epsilon(ox, epsilon) &&
+        sy.almost_eq_epsilon(oy, epsilon)
+    }
+}
+
+impl <T: Number> AlmostEq<T> for Rect<T> {
+    fn almost_eq_epsilon(self, Rect(op1, op2): Rect<T>, epsilon: T) -> bool {
+        let Rect(sp1, sp2) = self;
+        sp1.almost_eq_epsilon(op1, epsilon) &&
+        sp2.almost_eq_epsilon(op2, epsilon)
+    }
+}
+
+impl <T: Number> AlmostEq<T> for LineSegment<T> {
+    fn almost_eq_epsilon(self, LineSegment(op1, op2): LineSegment<T>, epsilon: T) -> bool {
+        let LineSegment(sp1, sp2) = self;
+        sp1.almost_eq_epsilon(op1, epsilon) &&
+        sp2.almost_eq_epsilon(op2, epsilon)
+    }
+}
+
+impl <T: Number> AlmostEq<T> for Ray<T> {
+    fn almost_eq_epsilon(self, Ray(op1, op2): Ray<T>, epsilon: T) -> bool {
+        let Ray(sp1, sp2) = self;
+        sp1.almost_eq_epsilon(op1, epsilon) &&
+        sp2.almost_eq_epsilon(op2, epsilon)
     }
 }
