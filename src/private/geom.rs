@@ -2,18 +2,22 @@ use std::ops::{Add, Sub};
 
 pub trait Number: ::num::traits::Float + ::num::traits::FromPrimitive + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug {}
 
-pub trait DistanceTo<T, N: Number> {
+pub trait Distance<T, N: Number> {
     fn distance_squared(self, other: T) -> N;
     fn distance(self, other: T) -> N where Self: Sized {
         self.distance_squared(other).sqrt()
     }
 }
 
+pub trait Intersects<T, N: Number> {
+    fn intersects(self, other: T) -> Intersections<N>;
+}
+
 pub trait Bounded<T: Number> {
     fn aabb(self) -> Rect<T>;
 }
 
-pub trait CanContain<T> {
+pub trait Contains<T> {
     fn contains(self, T) -> bool;
 }
 
@@ -22,6 +26,14 @@ pub trait AlmostEq<N: Number> {
     fn almost_eq(self, other: Self) -> bool where Self: Sized {
         self.almost_eq_epsilon(other, N::min_positive_value() * N::from_u64(100).unwrap())
     }
+}
+
+#[derive(Clone, Debug)]
+pub enum Intersections<N: Number> {
+    None,
+    One(Point<N>),
+    Nwo(Point<N>, Point<N>),
+    Many(Vec<Point<N>>)
 }
 
 pub struct LinesFromPolyIterator<'a, T: Number + 'a> {
@@ -37,6 +49,8 @@ pub struct Point<T: Number>(pub T, pub T);
 pub struct Vector<T: Number>(pub T, pub T);
 #[derive(Debug, Copy, Clone)]
 pub struct LineSegment<T: Number>(pub Point<T>, pub Point<T>);
+#[derive(Debug, Copy, Clone)]
+pub struct Circle<T: Number>(pub Point<T>, pub T);
 #[derive(Debug, Copy, Clone)]
 pub struct Ray<T: Number>(pub Point<T>, pub Vector<T>);
 #[derive(Debug, Copy, Clone)]
@@ -62,6 +76,20 @@ impl <T: Number> Rect<T> {
         Rect(p, p)
     }
 
+    pub fn width(self) -> T {
+        let Rect(Point(left, _), Point(right, _)) = self;
+        right - left
+    }
+
+    pub fn height(self) -> T {
+        let Rect(Point(_, top), Point(_, bottom)) = self;
+        top - bottom
+    }
+
+    pub fn area(self) -> T {
+        self.width() * self.height()
+    }
+
     pub fn expand_to_include(&mut self, Point(px, py): Point<T>) {
         let Rect(top_left, bottom_right) = *self;
         if px < top_left.0 {
@@ -80,8 +108,8 @@ impl <T: Number> Rect<T> {
     }
 }
 
-impl <T: Number> LineSegment<T> {
-    pub fn intersection(self, other: LineSegment<T>) -> Option<Point<T>> {
+impl <N: Number> Intersects<LineSegment<N>, N> for LineSegment<N> {
+    fn intersects(self, other: LineSegment<N>) -> Intersections<N> {
         let LineSegment(Point(p0_x, p0_y), Point(p1_x, p1_y)) = self;
         let LineSegment(Point(p2_x, p2_y), Point(p3_x, p3_y)) = other;
 
@@ -93,11 +121,22 @@ impl <T: Number> LineSegment<T> {
         let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
         let t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
 
-        if s >= T::zero() && s <= T::one() && t >= T::zero() && t <= T::one() {
-            Some(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
+        if s >= N::zero() && s <= N::one() && t >= N::zero() && t <= N::one() {
+            Intersections::One(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
         } else {
-            None
+            Intersections::None
         }
+    }
+}
+
+impl <T: Number> Vector<T> {
+    pub fn magnitude_2(self) -> T {
+        let Vector(dx, dy) = self;
+        dx * dx + dy * dy
+    }
+
+    pub fn magnitude(self) -> T {
+        self.magnitude_2().sqrt()
     }
 }
 
@@ -129,7 +168,7 @@ impl <T: Number> Poly<T> {
     }
 }
 
-impl <'a, T: Number> CanContain<Point<T>> for Rect<T> {
+impl <'a, T: Number> Contains<Point<T>> for Rect<T> {
     fn contains(self, Point(px, py): Point<T>) -> bool {
         let Rect(Point(tlx, tly), Point(brx, bry)) = self;
         px >= tlx && px < brx && py >= tly && py < bry
@@ -137,7 +176,26 @@ impl <'a, T: Number> CanContain<Point<T>> for Rect<T> {
     }
 }
 
-impl <'a, T: Number> CanContain<Point<T>> for &'a Poly<T> {
+impl <T: Number> Contains<LineSegment<T>> for Rect<T> {
+    fn contains(self, LineSegment(pa, pb): LineSegment<T>) -> bool {
+        self.contains(pa) && self.contains(pb)
+    }
+}
+
+impl <T: Number> Contains<Point<T>> for Circle<T> {
+    fn contains(self, point: Point<T>) -> bool {
+        let Circle(center, r) = self;
+        (point - center).magnitude_2() <= r * r
+    }
+}
+
+impl <T: Number> Contains<LineSegment<T>> for Circle<T> {
+    fn contains(self, LineSegment(pa, pb): LineSegment<T>) -> bool {
+        self.contains(pa) && self.contains(pb)
+    }
+}
+
+impl <'a, T: Number> Contains<Point<T>> for &'a Poly<T> {
     fn contains(self, p: Point<T>) -> bool {
         if !self.aabb.contains(p) { return false; }
 
@@ -152,7 +210,38 @@ impl <'a, T: Number> CanContain<Point<T>> for &'a Poly<T> {
     }
 }
 
-impl <T: Number> DistanceTo<Point<T>, T> for Point<T> {
+impl <T: Number> Contains<Rect<T>> for Rect<T> {
+    fn contains(self, Rect(p1, p2): Rect<T>) -> bool {
+        self.contains(p1) && self.contains(p2)
+    }
+}
+
+impl <T: Number> Contains<Rect<T>> for Circle<T> {
+    fn contains(self, Rect(Point(left, top), Point(right, bottom)): Rect<T>) -> bool {
+        let Circle(Point(cx, cy), radius) = self;
+        let dx = (cx - left).max(right - cx);
+        let dy = (cy - top).max(bottom - cy);
+        return radius * radius >= dx * dx + dy * dy
+    }
+}
+
+impl <T: Number> Contains<Circle<T>> for Circle<T> {
+    fn contains(self, Circle(Point(ox, oy), or): Circle<T>) -> bool {
+        let Circle(Point(sx, sy), sr) = self;
+
+        let radius_diff = sr - or;
+		if (radius_diff < T::zero()) { return false; }
+
+		let dx = sx - ox;
+		let dy = sy - oy;
+		let dst = dx * dx + dy * dy;
+		let radius_sum = sr + or;
+		return (!(radius_diff * radius_diff < dst) && (dst < radius_sum * radius_sum));
+    }
+}
+
+
+impl <T: Number> Distance<Point<T>, T> for Point<T> {
     fn distance_squared(self, other: Point<T>) -> T {
         let dx = self.0 - other.0;
         let dy = self.1 - other.1;
@@ -160,7 +249,7 @@ impl <T: Number> DistanceTo<Point<T>, T> for Point<T> {
     }
 }
 
-impl <T:Number> DistanceTo<LineSegment<T>, T> for Point<T> {
+impl <T:Number> Distance<LineSegment<T>, T> for Point<T> {
     fn distance_squared(self, LineSegment(v, w): LineSegment<T>) -> T {
         use ::num::{Zero, One};
         let l2 = v.distance_squared(w);
@@ -182,13 +271,13 @@ impl <T:Number> DistanceTo<LineSegment<T>, T> for Point<T> {
     }
 }
 
-impl <T: Number> DistanceTo<Point<T>, T> for LineSegment<T> {
+impl <T: Number> Distance<Point<T>, T> for LineSegment<T> {
     fn distance_squared(self, point: Point<T>) -> T {
         point.distance_squared(self)
     }
 }
 
-impl <'a, T: Number> DistanceTo<&'a Poly<T>, T> for Point<T> {
+impl <'a, T: Number> Distance<&'a Poly<T>, T> for Point<T> {
     fn distance_squared(self, polygon: &Poly<T>) -> T {
         let mut min_dist = T::infinity();
         for line in polygon.lines() {

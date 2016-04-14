@@ -1,3 +1,7 @@
 extern crate num;
 
-pub mod private;
+mod private;
+
+pub mod geom {
+    pub use super::private::geom::*;
+}
