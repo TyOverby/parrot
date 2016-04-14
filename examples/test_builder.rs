@@ -186,8 +186,8 @@ impl Scene {
 fn draw_point(Point(cx, cy): Point<f32>, frame: &mut Frame) {
     let r1 = 20.0;
     let r2 = 5.0;
-    frame.circle(cx - r1, cy - r1, r1 * 2.0).color((0.5, 0.5, 0.5)).fill();
-    frame.circle(cx - r2, cy - r2, r2 * 2.0).color((0.0, 0.0, 0.0)).fill();
+    frame.circle(cx - r1, cy - r1, r1 * 2.0).segments(20).color((0.5, 0.5, 0.5)).fill();
+    frame.circle(cx - r2, cy - r2, r2 * 2.0).segments(10).color((0.0, 0.0, 0.0)).fill();
 }
 
 fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame) {
