@@ -8,7 +8,7 @@ use lux::color::{GREEN, RED};
 use lux::interactive::Event;
 use parrot::geom::*;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone)]
 enum Geometry {
     Circle(Circle<f32>),
     Rect(Rect<f32>),
@@ -32,8 +32,8 @@ enum Operation {
 
 #[derive(Clone, Debug)]
 enum CalcReturn {
-    IntersectionPoints(Intersections<f32>),
-    DoesContain(bool),
+    IntersectionPoints(Geometry, Geometry, Intersections<f32>),
+    DoesContain(Geometry, Geometry, bool),
 }
 
 struct Scene {
@@ -87,29 +87,29 @@ impl Scene {
 
         match (self.operation, a, b) {
             (Operation::Intersection, Geometry::Line(l1), Geometry::Line(l2)) => {
-                let result = CalcReturn::IntersectionPoints(l1.intersects(l2));
+                let result = CalcReturn::IntersectionPoints(a, b, l1.intersects(l2));
                 println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
                 Some(result)
             }
             (Operation::Intersection, Geometry::Circle(c), Geometry::Line(l)) => {
-                let result = CalcReturn::IntersectionPoints(c.intersects(l));
+                let result = CalcReturn::IntersectionPoints(a, b, c.intersects(l));
                 println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
                 Some(result)
             }
             (Operation::Intersection, Geometry::Line(l), Geometry::Circle(c)) => {
-                let result = CalcReturn::IntersectionPoints(c.intersects(l));
+                let result = CalcReturn::IntersectionPoints(a, b, c.intersects(l));
                 println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
                 Some(result)
             }
             (Operation::Contains, Geometry::Circle(c1), Geometry::Circle(c2)) => {
                 let result = c1.contains(c2);
                 println!("contains of {:?} and {:?} is {:?}", c1, c2, result);
-                Some(CalcReturn::DoesContain(result))
+                Some(CalcReturn::DoesContain(a, b, result))
             }
             (Operation::Contains, Geometry::Circle(c), Geometry::Point(p)) => {
                 let result = c.contains(p);
                 println!("contains of {:?} and {:?} is {:?}", c, p, result);
-                Some(CalcReturn::DoesContain(result))
+                Some(CalcReturn::DoesContain(a, b, result))
             }
             (op, geo1, geo2) => {
                 println!("could not compute {:?} for {:?} and {:?}", op, geo1, geo2);
@@ -153,6 +153,9 @@ impl Scene {
                 Event::KeyPressed(_, Some('k'), _) => {
                     self.operation = Operation::Contains;
                     should_calculate = true;
+                }
+                Event::KeyPressed(_, Some(' '), _) => {
+                    self.produce_test_case();
                 }
                 _ => {}
             }
@@ -243,23 +246,39 @@ impl Scene {
 
         if self.selected_a.is_some() && self.selected_b.is_some() {
             match self.last_calculation_result.as_ref() {
-                Some(&CalcReturn::IntersectionPoints(Intersections::None)) => { }
-                Some(&CalcReturn::IntersectionPoints(Intersections::One(a))) => {
+                Some(&CalcReturn::IntersectionPoints(_, _, Intersections::None)) => { }
+                Some(&CalcReturn::IntersectionPoints(_, _, Intersections::One(a))) => {
                     draw_point(a, &mut frame);
                 }
-                Some(&CalcReturn::IntersectionPoints(Intersections::Two(a, b))) => {
+                Some(&CalcReturn::IntersectionPoints(_, _, Intersections::Two(a, b))) => {
                     draw_point(a, &mut frame);
                     draw_point(b, &mut frame);
                 }
-                Some(&CalcReturn::IntersectionPoints(Intersections::Many(ref all))) => {
+                Some(&CalcReturn::IntersectionPoints(_, _, Intersections::Many(ref all))) => {
                     for &p in all {
                         draw_point(p, &mut frame);
                     }
                 }
-                Some(&CalcReturn::DoesContain(b)) => {
+                Some(&CalcReturn::DoesContain(_, _, b)) => {
                     frame.square(0.0, 0.0, 50.0).color(if b {GREEN} else {RED}).fill();
                 }
                 None => {}
+            }
+        }
+    }
+
+    fn produce_test_case(&self) {
+        match self.last_calculation_result.clone() {
+            Some(CalcReturn::IntersectionPoints(a, b, pts)) => {
+                println!("assert!({:.10?}.intersects({:.10?}) == {:?});", a, b, pts);
+            }
+
+            Some(CalcReturn::DoesContain(a, b, c)) => {
+                println!("assert!({:.10?}.contains({:.10?}) == {:?});", a, b, c);
+            }
+
+            None => {
+                println!("no last calculation result");
             }
         }
     }
@@ -282,7 +301,23 @@ fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame) {
     frame.draw_line(p1.0, p1.1, p2.0, p2.1, 2.0);
 }
 
+impl ::std::fmt::Debug for Geometry {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match self {
+            &Geometry::Circle(Circle(Point(cx, cy), r)) =>
+                write!(f, "Circle(Point({:.20}, {:.20}), {:.10})", cx, cy, r),
+            &Geometry::Rect(Rect(Point(x1, y1), Point(x2, y2))) =>
+                write!(f, "Rect(Point({:.20}, {:.20}), Point({:.10}, {:.10}))", x1, y1, x2, y2),
+            &Geometry::Line(LineSegment(Point(x1, y1), Point(x2, y2))) =>
+                write!(f, "LineSegment(Point({:.20}, {:.20}), Point({:.10}, {:.10}))", x1, y1, x2, y2),
+            &Geometry::Point(Point(x, y)) =>
+                write!(f, "Point({:.20}, {:.20})", x, y)
+        }
+    }
+}
+
 fn main() {
     let mut scene = Scene::new();
     scene.run();
 }
+

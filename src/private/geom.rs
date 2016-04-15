@@ -28,7 +28,7 @@ pub trait AlmostEq<N: Number> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Intersections<N: Number> {
     None,
     One(Point<N>),
@@ -435,5 +435,22 @@ impl <T: Number> AlmostEq<T> for Ray<T> {
         let Ray(sp1, sp2) = self;
         sp1.almost_eq_epsilon(op1, epsilon) &&
         sp2.almost_eq_epsilon(op2, epsilon)
+    }
+}
+
+impl <T: Number> ::std::fmt::Debug for Intersections<T> {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
+        match self {
+            &Intersections::None => write!(f, "Intersections::None"),
+            &Intersections::One(Point(x, y)) => write!(f, "Intersections::One(Point({:.20?}, {:.20?}))", x, y),
+            &Intersections::Two(Point(x1, y1), Point(x2, y2)) => write!(f, "Intersections::Two(Point({:.20?}, {:.20?}), Point({:.20?}, {:.20?}))", x1, y1, x2, y2),
+            &Intersections::Many(ref v) => {
+                try!(write!(f, "Intersections::Many(vec!["));
+                for &Point(x, y) in v {
+                    try!(write!(f, "Point({:.20?}, {:.20?})", x, y));
+                }
+                write!(f, "])")
+            }
+        }
     }
 }
