@@ -4,6 +4,7 @@ extern crate lux;
 extern crate parrot;
 
 use lux::prelude::*;
+use lux::color::{GREEN, RED};
 use lux::interactive::Event;
 use parrot::geom::*;
 
@@ -31,7 +32,8 @@ enum Operation {
 
 #[derive(Clone, Debug)]
 enum CalcReturn {
-    IntersectionPoints(Intersections<f32>)
+    IntersectionPoints(Intersections<f32>),
+    DoesContain(bool),
 }
 
 struct Scene {
@@ -61,7 +63,8 @@ impl Scene {
 
     fn run(&mut self) {
         println!("[a][b] to clear item a or item b");
-        println!("[p][l] to switch insertion to point or line");
+        println!("[p][l][c] to switch insertion between [point, line, circle]");
+        println!("[k][i] to switch mode between [contains, intersection]");
         while self.window.is_open() {
             let events = self.window.events();
             let mous_pos = self.window.mouse_pos();
@@ -77,14 +80,26 @@ impl Scene {
     }
 
     fn calculate(&self) -> Option<CalcReturn> {
-        let a = self.selected_a.unwrap();
-        let b = self.selected_b.unwrap();
+        let (a, b) = match (self.selected_a, self.selected_b) {
+            (Some(a), Some(b)) => (a, b),
+            _ => return None,
+        };
 
         match (self.operation, a, b) {
             (Operation::Intersection, Geometry::Line(l1), Geometry::Line(l2)) => {
                 let result = CalcReturn::IntersectionPoints(l1.intersects(l2));
                 println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
                 Some(result)
+            }
+            (Operation::Contains, Geometry::Circle(c1), Geometry::Circle(c2)) => {
+                let result = c1.contains(c2);
+                println!("contains of {:?} and {:?} is {:?}", c1, c2, result);
+                Some(CalcReturn::DoesContain(result))
+            }
+            (Operation::Contains, Geometry::Circle(c), Geometry::Point(p)) => {
+                let result = c.contains(p);
+                println!("contains of {:?} and {:?} is {:?}", c, p, result);
+                Some(CalcReturn::DoesContain(result))
             }
             (op, geo1, geo2) => {
                 println!("could not compute {:?} for {:?} and {:?}", op, geo1, geo2);
@@ -96,12 +111,12 @@ impl Scene {
     // Returns true if any events were passed through
     fn respond_to_input(&mut self, events: EventIterator, mouse: (f32, f32)) -> (bool, bool) {
         let mut got_event = false;
-        let mut got_input = false;
+        let mut should_calculate = false;
         for event in events {
             got_event = true;
             match event {
                 Event::MouseUp(_) => {
-                    got_input = self.input_point(mouse);
+                    should_calculate  = self.input_point(mouse);
                 }
                 Event::KeyPressed(_, Some('a'), _) => {
                     self.selected_a = None;
@@ -113,14 +128,26 @@ impl Scene {
                     self.drawing = DrawGeom::Point;
                     self.last_click = None;
                 }
+                Event::KeyPressed(_, Some('c'), _) => {
+                    self.drawing = DrawGeom::Circle;
+                    self.last_click = None;
+                }
                 Event::KeyPressed(_, Some('l'), _) => {
                     self.drawing = DrawGeom::Line;
                     self.last_click = None;
                 }
+                Event::KeyPressed(_, Some('i'), _) => {
+                    self.operation = Operation::Intersection;
+                    should_calculate = true;
+                }
+                Event::KeyPressed(_, Some('k'), _) => {
+                    self.operation = Operation::Contains;
+                    should_calculate = true;
+                }
                 _ => {}
             }
         }
-        (got_event, got_input)
+        (got_event, should_calculate)
     }
 
     // Returns true if the last object was just placed.
@@ -157,6 +184,27 @@ impl Scene {
                 *l= None;
                 true
             }
+
+            (DrawGeom::Circle, _, _, l@&mut None) => {
+                *l = Some((x, y));
+                false
+            }
+            (DrawGeom::Circle, a@&mut None, b, l@&mut Some(_)) => {
+                let (lx, ly) = l.unwrap();
+                let center = Point(lx, ly);
+                let edge = Point(x, y);
+                *a = Some(Geometry::Circle(Circle(center, center.distance(edge))));
+                *l = None;
+                b.is_some()
+            }
+            (DrawGeom::Circle, &mut Some(_), b@&mut None , l@&mut Some(_)) => {
+                let (lx, ly) = l.unwrap();
+                let center = Point(lx, ly);
+                let edge = Point(x, y);
+                *b = Some(Geometry::Circle(Circle(center, center.distance(edge))));
+                *l = None;
+                true
+            }
             _ => false
         }
     }
@@ -164,27 +212,24 @@ impl Scene {
     fn draw(&mut self, mut frame: Frame, (mx, my): (f32, f32)) {
         draw_point(Point(mx, my), &mut frame);
 
-        match self.selected_a {
-            Some(Geometry::Point(p)) => {
-                draw_point(p, &mut frame);
+        fn draw_selected(selected: Option<Geometry>, frame: &mut Frame) {
+            match selected {
+                Some(Geometry::Point(p)) => {
+                    draw_point(p, frame);
+                }
+                Some(Geometry::Line(l)) => {
+                    draw_line_segment(l, frame);
+                }
+                Some(Geometry::Circle(c)) => {
+                    draw_circle(c, frame);
+                }
+                Some(_) => {}
+                None => {}
             }
-            Some(Geometry::Line(l)) => {
-                draw_line_segment(l, &mut frame);
-            }
-            Some(_) => {}
-            None => {}
         }
 
-        match self.selected_b {
-            Some(Geometry::Point(p)) => {
-                draw_point(p, &mut frame);
-            }
-            Some(Geometry::Line(l)) => {
-                draw_line_segment(l, &mut frame);
-            }
-            Some(_) => {}
-            None => {}
-        }
+        draw_selected(self.selected_a, &mut frame);
+        draw_selected(self.selected_b, &mut frame);
 
         if self.selected_a.is_some() && self.selected_b.is_some() {
             match self.last_calculation_result.as_ref() {
@@ -201,6 +246,9 @@ impl Scene {
                         draw_point(p, &mut frame);
                     }
                 }
+                Some(&CalcReturn::DoesContain(b)) => {
+                    frame.square(0.0, 0.0, 50.0).color(if b {GREEN} else {RED}).fill();
+                }
                 None => {}
             }
         }
@@ -210,8 +258,12 @@ impl Scene {
 fn draw_point(Point(cx, cy): Point<f32>, frame: &mut Frame) {
     let r1 = 20.0;
     let r2 = 5.0;
-    frame.circle(cx - r1, cy - r1, r1 * 2.0).segments(20).color((0.5, 0.5, 0.5)).fill();
+    frame.circle(cx - r1, cy - r1, r1 * 2.0).segments(20).color((0.0, 0.0, 0.0, 0.5)).fill();
     frame.circle(cx - r2, cy - r2, r2 * 2.0).segments(10).color((0.0, 0.0, 0.0)).fill();
+}
+
+fn draw_circle(Circle(Point(cx, cy), r): Circle<f32>, frame: &mut Frame) {
+    frame.circle(cx - r, cy - r, r * 2.0).color((0.0, 0.0, 0.0, 0.5)).fill();
 }
 
 fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame) {
