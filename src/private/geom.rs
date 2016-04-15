@@ -32,7 +32,7 @@ pub trait AlmostEq<N: Number> {
 pub enum Intersections<N: Number> {
     None,
     One(Point<N>),
-    Nwo(Point<N>, Point<N>),
+    Two(Point<N>, Point<N>),
     Many(Vec<Point<N>>)
 }
 

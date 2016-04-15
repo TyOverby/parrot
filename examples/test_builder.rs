@@ -43,6 +43,7 @@ struct Scene {
     selected_b: Option<Geometry>,
 
     last_click: Option<(f32, f32)>,
+    last_calculation_result: Option<CalcReturn>,
 }
 
 impl Scene {
@@ -54,6 +55,7 @@ impl Scene {
             selected_a: None,
             selected_b: None,
             last_click: None,
+            last_calculation_result: None,
         }
     }
 
@@ -66,24 +68,27 @@ impl Scene {
             let (should_redraw, should_calculate) = self.respond_to_input(events, mous_pos) ;
             if should_redraw {
                 let frame = self.window.cleared_frame((1.0, 1.0, 1.0));
-                self.draw(frame, mous_pos);
                 if should_calculate {
-                    self.calculate();
+                    self.last_calculation_result = self.calculate();
                 }
+                self.draw(frame, mous_pos);
             }
         }
     }
 
-    fn calculate(&self) {
+    fn calculate(&self) -> Option<CalcReturn> {
         let a = self.selected_a.unwrap();
         let b = self.selected_b.unwrap();
 
         match (self.operation, a, b) {
             (Operation::Intersection, Geometry::Line(l1), Geometry::Line(l2)) => {
+                let result = CalcReturn::IntersectionPoints(l1.intersects(l2));
                 println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
+                Some(result)
             }
             (op, geo1, geo2) => {
                 println!("could not compute {:?} for {:?} and {:?}", op, geo1, geo2);
+                None
             }
         }
     }
@@ -179,6 +184,25 @@ impl Scene {
             }
             Some(_) => {}
             None => {}
+        }
+
+        if self.selected_a.is_some() && self.selected_b.is_some() {
+            match self.last_calculation_result.as_ref() {
+                Some(&CalcReturn::IntersectionPoints(Intersections::None)) => { }
+                Some(&CalcReturn::IntersectionPoints(Intersections::One(a))) => {
+                    draw_point(a, &mut frame);
+                }
+                Some(&CalcReturn::IntersectionPoints(Intersections::Two(a, b))) => {
+                    draw_point(a, &mut frame);
+                    draw_point(b, &mut frame);
+                }
+                Some(&CalcReturn::IntersectionPoints(Intersections::Many(ref all))) => {
+                    for &p in all {
+                        draw_point(p, &mut frame);
+                    }
+                }
+                None => {}
+            }
         }
     }
 }
