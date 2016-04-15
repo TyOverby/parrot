@@ -108,26 +108,6 @@ impl <T: Number> Rect<T> {
     }
 }
 
-impl <N: Number> Intersects<LineSegment<N>, N> for LineSegment<N> {
-    fn intersects(self, other: LineSegment<N>) -> Intersections<N> {
-        let LineSegment(Point(p0_x, p0_y), Point(p1_x, p1_y)) = self;
-        let LineSegment(Point(p2_x, p2_y), Point(p3_x, p3_y)) = other;
-
-        let s1_x = p1_x - p0_x;
-        let s1_y = p1_y - p0_y;
-        let s2_x = p3_x - p2_x;
-        let s2_y = p3_y - p2_y;
-
-        let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
-        let t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
-
-        if s >= N::zero() && s <= N::one() && t >= N::zero() && t <= N::one() {
-            Intersections::One(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
-        } else {
-            Intersections::None
-        }
-    }
-}
 
 impl <T: Number> Vector<T> {
     pub fn magnitude_2(self) -> T {
@@ -165,6 +145,69 @@ impl <T: Number> Poly<T> {
             inner: self.points.windows(2),
             first_and_last: first_and_last,
         }
+    }
+}
+
+impl <N: Number> Intersects<LineSegment<N>, N> for LineSegment<N> {
+    fn intersects(self, other: LineSegment<N>) -> Intersections<N> {
+        let LineSegment(Point(p0_x, p0_y), Point(p1_x, p1_y)) = self;
+        let LineSegment(Point(p2_x, p2_y), Point(p3_x, p3_y)) = other;
+
+        let s1_x = p1_x - p0_x;
+        let s1_y = p1_y - p0_y;
+        let s2_x = p3_x - p2_x;
+        let s2_y = p3_y - p2_y;
+
+        let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
+        let t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
+
+        if s >= N::zero() && s <= N::one() && t >= N::zero() && t <= N::one() {
+            Intersections::One(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
+        } else {
+            Intersections::None
+        }
+    }
+}
+
+impl <N: Number> Intersects<LineSegment<N>, N> for Circle<N> {
+    fn intersects(self, other: LineSegment<N>) -> Intersections<N> {
+        let Circle(center, radius) = self;
+        let LineSegment(point_a, point_b) = other;
+
+        let ba_x = point_b.0 - point_a.0;
+        let ba_y = point_b.1 - point_a.1;
+        let ca_x = center.0 - point_a.0;
+        let ca_y = center.1 - point_a.1;
+
+        let a = ba_x * ba_x + ba_y * ba_y;
+        let bby2 = ba_x * ca_x + ba_y * ca_y;
+        let c = ca_x * ca_x + ca_y * ca_y - radius * radius;
+
+        let pby2 = bby2 / a;
+        let q = c / a;
+
+        let disc = pby2 * pby2 - q;
+        if disc < N::zero() {
+            return Intersections::None
+        }
+
+        let tmp_sqrt = disc.sqrt();
+        let ab_scaling_factor_1 = -pby2 + tmp_sqrt;
+        let ab_scaling_factor_2 = -pby2 - tmp_sqrt;
+
+        let p1 = Point(point_a.0 - ba_x * ab_scaling_factor_1, point_a.1 - ba_y * ab_scaling_factor_1);
+        if disc == N::zero() {
+            return Intersections::One(p1);
+        }
+
+        let p2 = Point(point_a.0- ba_x * ab_scaling_factor_2, point_a.1 - ba_y * ab_scaling_factor_2);
+        Intersections::Two(p1, p2)
+    }
+}
+
+impl <N: Number> Intersects<Circle<N>, N> for LineSegment<N> {
+    fn intersects(self, other: Circle<N>) -> Intersections<N> {
+        other.intersects(self)
     }
 }
 

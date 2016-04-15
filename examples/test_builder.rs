@@ -91,6 +91,16 @@ impl Scene {
                 println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
                 Some(result)
             }
+            (Operation::Intersection, Geometry::Circle(c), Geometry::Line(l)) => {
+                let result = CalcReturn::IntersectionPoints(c.intersects(l));
+                println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
+                Some(result)
+            }
+            (Operation::Intersection, Geometry::Line(l), Geometry::Circle(c)) => {
+                let result = CalcReturn::IntersectionPoints(c.intersects(l));
+                println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
+                Some(result)
+            }
             (Operation::Contains, Geometry::Circle(c1), Geometry::Circle(c2)) => {
                 let result = c1.contains(c2);
                 println!("contains of {:?} and {:?} is {:?}", c1, c2, result);
