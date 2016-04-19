@@ -71,6 +71,32 @@ impl <T: Number> Vector<T> {
     }
 }
 
+impl <T: Number> LineSegment<T> {
+    pub fn length_squared(self) -> T {
+        let LineSegment(Point(x1, y1), Point(x2, y2)) = self;
+        (x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2)
+    }
+
+    pub fn length(self) -> T {
+        self.length_squared().sqrt()
+    }
+
+    pub fn midpoint(self) -> Point<T> {
+        let two = T::one() + T::one();
+        let LineSegment(p1, p2) = self;
+        let mut v = p1 - p2;
+        v.0 = v.0 / two;
+        v.1 = v.1 / two;
+        p2 + v
+    }
+}
+
+impl <T: Number> Point<T> {
+    pub fn distance_to(self, other: Point<T>) -> T {
+        (self - other).magnitude()
+    }
+}
+
 impl <T: Number> Rect<T> {
     pub fn null_at(p: Point<T>) -> Rect<T> {
         Rect(p, p)
@@ -196,12 +222,41 @@ impl <N: Number> Intersects<LineSegment<N>, N> for Circle<N> {
         let ab_scaling_factor_2 = -pby2 - tmp_sqrt;
 
         let p1 = Point(point_a.0 - ba_x * ab_scaling_factor_1, point_a.1 - ba_y * ab_scaling_factor_1);
-        if disc == N::zero() {
-            return Intersections::One(p1);
-        }
+        let p2 = Point(point_a.0 - ba_x * ab_scaling_factor_2, point_a.1 - ba_y * ab_scaling_factor_2);
+        let disc_zero = disc == N::zero();
 
-        let p2 = Point(point_a.0- ba_x * ab_scaling_factor_2, point_a.1 - ba_y * ab_scaling_factor_2);
-        Intersections::Two(p1, p2)
+        let line_midpoint = other.midpoint();
+        let half_length = other.length() / (N::one() + N::one());
+        let p1_range = p1.distance_to(line_midpoint) <= half_length;
+        let p2_range = p2.distance_to(line_midpoint) <= half_length;
+
+        match (disc_zero, p1_range, p2_range) {
+            (true, false, _) => {
+                println!("a");
+                Intersections::None
+            }
+            (true, true, _) => {
+                println!("b");
+                Intersections::One(p1)
+            }
+            (false, true, false) => {
+                println!("c");
+                Intersections::One(p1)
+            }
+            (false, false, true) => {
+                println!("d");
+                println!("{:?} >= {:?}", p1.distance_to(line_midpoint), half_length);
+                Intersections::One(p2)
+            }
+            (false, true, true) => {
+                println!("e");
+                Intersections::Two(p1, p2)
+            }
+            (false, false, false) => {
+                println!("f");
+                Intersections::None
+            }
+        }
     }
 }
 
