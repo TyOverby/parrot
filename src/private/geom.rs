@@ -28,7 +28,7 @@ pub trait AlmostEq<N: Number> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub enum Intersections<N: Number> {
     None,
     One(Point<N>),
@@ -43,19 +43,19 @@ pub struct LinesFromPolyIterator<'a, T: Number + 'a> {
 
 impl <T: ::num::traits::Float + ::num::traits::FromPrimitive + ::std::cmp::PartialOrd + Copy + ::std::fmt::Debug> Number for T {}
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Point<T: Number>(pub T, pub T);
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Vector<T: Number>(pub T, pub T);
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct LineSegment<T: Number>(pub Point<T>, pub Point<T>);
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Circle<T: Number>(pub Point<T>, pub T);
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Ray<T: Number>(pub Point<T>, pub Vector<T>);
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Rect<T: Number>(pub Point<T>, pub Point<T>);
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, PartialOrd)]
 pub struct Poly<T: Number> {
     points: Vec<Point<T>>,
     aabb: Rect<T>,
@@ -438,6 +438,18 @@ impl <T: Number> AlmostEq<T> for Ray<T> {
     }
 }
 
+impl <T: Number> AlmostEq<T> for Intersections<T> {
+    fn almost_eq_epsilon(self, other: Intersections<T>, epsilon: T) -> bool {
+        match (self, other) {
+            (Intersections::None, Intersections::None) => true,
+            (Intersections::One(a), Intersections::One(b)) => a.almost_eq_epsilon(b, epsilon),
+            (Intersections::Two(a, b), Intersections::Two(c, d)) => a.almost_eq_epsilon(c, epsilon) && b.almost_eq_epsilon(d, epsilon),
+            (Intersections::Many(a), Intersections::Many(b)) => a.into_iter().zip(b.into_iter()).all(|(a, b)| a.almost_eq_epsilon(b, epsilon)),
+            _ => false
+        }
+    }
+}
+
 impl <T: Number> ::std::fmt::Debug for Intersections<T> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self {
@@ -447,7 +459,7 @@ impl <T: Number> ::std::fmt::Debug for Intersections<T> {
             &Intersections::Many(ref v) => {
                 try!(write!(f, "Intersections::Many(vec!["));
                 for &Point(x, y) in v {
-                    try!(write!(f, "Point({:.20?}, {:.20?})", x, y));
+                    try!(write!(f, "Point({:.20?}, {:.20?}),", x, y));
                 }
                 write!(f, "])")
             }

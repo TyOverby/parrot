@@ -2,6 +2,8 @@
 
 extern crate lux;
 extern crate parrot;
+extern crate sha1;
+extern crate latin;
 
 use lux::prelude::*;
 use lux::color::{GREEN, RED};
@@ -268,19 +270,28 @@ impl Scene {
     }
 
     fn produce_test_case(&self) {
-        match self.last_calculation_result.clone() {
+        const EPSILON: &'static str = "0.0000001f32";
+        let assertion = match self.last_calculation_result.clone() {
             Some(CalcReturn::IntersectionPoints(a, b, pts)) => {
-                println!("assert!({:.10?}.intersects({:.10?}) == {:?});", a, b, pts);
+                format!("assert!({:.20?}.intersects({:.20?}).almost_eq_epsilon({:?}, {}));", a, b, pts, EPSILON)
+                //format!("println!(\"{{:.20?}}\", {:.20?}.intersects({:.20?})); println!(\"{{:.20?}}\", {:.20?});", a, b, pts)
             }
 
             Some(CalcReturn::DoesContain(a, b, c)) => {
-                println!("assert!({:.10?}.contains({:.10?}) == {:?});", a, b, c);
+                format!("assert!({:.20?}.contains({:.20?}).almost_eq_epsilon({:?}, {}));", a, b, c, EPSILON)
             }
 
             None => {
                 println!("no last calculation result");
+                return;
             }
-        }
+        };
+
+        let mut sha1 = ::sha1::Sha1::new();
+        sha1.update(assertion.as_bytes());
+        let output = format!("#[test]\nfn test_{}() {{\n    {}\n}}\n", sha1.hexdigest(), assertion);
+        println!("{}", output);
+        ::latin::file::append("./tests/guigen.rs", output).unwrap();
     }
 }
 
@@ -305,11 +316,11 @@ impl ::std::fmt::Debug for Geometry {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self {
             &Geometry::Circle(Circle(Point(cx, cy), r)) =>
-                write!(f, "Circle(Point({:.20}, {:.20}), {:.10})", cx, cy, r),
+                write!(f, "Circle(Point({:.20}, {:.20}), {:.20})", cx, cy, r),
             &Geometry::Rect(Rect(Point(x1, y1), Point(x2, y2))) =>
-                write!(f, "Rect(Point({:.20}, {:.20}), Point({:.10}, {:.10}))", x1, y1, x2, y2),
+                write!(f, "Rect(Point({:.20}, {:.20}), Point({:.20}, {:.20}))", x1, y1, x2, y2),
             &Geometry::Line(LineSegment(Point(x1, y1), Point(x2, y2))) =>
-                write!(f, "LineSegment(Point({:.20}, {:.20}), Point({:.10}, {:.10}))", x1, y1, x2, y2),
+                write!(f, "LineSegment(Point({:.20}, {:.20}), Point({:.20}, {:.20}))", x1, y1, x2, y2),
             &Geometry::Point(Point(x, y)) =>
                 write!(f, "Point({:.20}, {:.20})", x, y)
         }
