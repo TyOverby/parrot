@@ -6,7 +6,7 @@ extern crate sha1;
 extern crate latin;
 
 use lux::prelude::*;
-use lux::color::{GREEN, RED};
+use lux::color::{RED, GREEN, BLUE, BLACK};
 use lux::interactive::Event;
 use parrot::geom::*;
 
@@ -243,43 +243,43 @@ impl Scene {
     }
 
     fn draw(&mut self, mut frame: Frame, (mx, my): (f32, f32)) {
-        draw_point(Point(mx, my), &mut frame);
+        draw_point(Point(mx, my), &mut frame, BLACK);
 
-        fn draw_selected(selected: Option<&Geometry>, frame: &mut Frame) {
+        fn draw_selected(selected: Option<&Geometry>, frame: &mut Frame, color: [f32; 4]) {
             match selected {
                 Some(&Geometry::Point(p)) => {
-                    draw_point(p, frame);
+                    draw_point(p, frame, color);
                 }
                 Some(&Geometry::Line(l)) => {
-                    draw_line_segment(l, frame);
+                    draw_line_segment(l, frame, color);
                 }
                 Some(&Geometry::Circle(c)) => {
-                    draw_circle(c, frame);
+                    draw_circle(c, frame, color);
                 }
                 Some(&Geometry::Polygon(ref p)) => {
-                    draw_polygon(p, frame);
+                    draw_polygon(p, frame, color);
                 }
                 Some(_) => {}
                 None => {}
             }
         }
 
-        draw_selected(self.selected_a.as_ref(), &mut frame);
-        draw_selected(self.selected_b.as_ref(), &mut frame);
+        draw_selected(self.selected_a.as_ref(), &mut frame, RED);
+        draw_selected(self.selected_b.as_ref(), &mut frame, GREEN);
 
         if self.selected_a.is_some() && self.selected_b.is_some() {
             match self.last_calculation_result.as_ref() {
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::None)) => { }
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::One(a))) => {
-                    draw_point(a, &mut frame);
+                    draw_point(a, &mut frame, BLUE);
                 }
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::Two(a, b))) => {
-                    draw_point(a, &mut frame);
-                    draw_point(b, &mut frame);
+                    draw_point(a, &mut frame, BLUE);
+                    draw_point(b, &mut frame, BLUE);
                 }
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::Many(ref all))) => {
                     for &p in all {
-                        draw_point(p, &mut frame);
+                        draw_point(p, &mut frame, BLUE);
                     }
                 }
                 Some(&CalcReturn::DoesContain(_, _, b)) => {
@@ -316,26 +316,32 @@ impl Scene {
     }
 }
 
-fn draw_point(Point(cx, cy): Point<f32>, frame: &mut Frame) {
+fn draw_point(Point(cx, cy): Point<f32>, frame: &mut Frame, color: [f32; 4]) {
     let r1 = 20.0;
     let r2 = 5.0;
-    frame.circle(cx - r1, cy - r1, r1 * 2.0).segments(20).color((0.0, 0.0, 0.0, 0.5)).fill();
-    frame.circle(cx - r2, cy - r2, r2 * 2.0).segments(10).color((0.0, 0.0, 0.0)).fill();
+    let r = color[0];
+    let g = color[1];
+    let b = color[2];
+    let a = color[3];
+    frame.circle(cx - r1, cy - r1, r1 * 2.0).segments(20).color((r, g, b, a / 2.0)).fill();
+    frame.circle(cx - r2, cy - r2, r2 * 2.0).segments(10).color((r, g, b, a)).fill();
 }
 
-fn draw_circle(Circle(Point(cx, cy), r): Circle<f32>, frame: &mut Frame) {
-    frame.circle(cx - r, cy - r, r * 2.0).color((0.0, 0.0, 0.0, 0.5)).fill();
+fn draw_circle(Circle(Point(cx, cy), r): Circle<f32>, frame: &mut Frame, color: [f32; 4]) {
+    let mut color = color;
+    color[3] /= 2.0;
+    frame.circle(cx - r, cy - r, r * 2.0).color(color).fill();
 }
 
-fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame) {
-    draw_point(p1, frame);
-    draw_point(p2, frame);
-    frame.draw_line(p1.0, p1.1, p2.0, p2.1, 2.0);
+fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame, color: [f32; 4]) {
+    draw_point(p1, frame, color);
+    draw_point(p2, frame, color);
+    frame.with_color(color, |frame| frame.draw_line(p1.0, p1.1, p2.0, p2.1, 2.0));
 }
 
-fn draw_polygon(poly: &Poly<f32>, frame: &mut Frame) {
+fn draw_polygon(poly: &Poly<f32>, frame: &mut Frame, color: [f32; 4]) {
     for line in poly.lines() {
-        draw_line_segment(line, frame);
+        draw_line_segment(line, frame, color);
     }
 }
 
