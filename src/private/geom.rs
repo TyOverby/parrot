@@ -159,6 +159,34 @@ impl <T: Number> Poly<T> {
         }
     }
 
+    pub fn dedupe_consecutive_points(&mut self) {
+        let mut prev: Option<Point<T>> = None;
+        self.points.retain(|&p| {
+            match (prev, p) {
+                (None, p) => {
+                    prev = Some(p);
+                    true
+                }
+                (Some(prev_pt), p) => {
+                    if prev_pt.almost_eq(p) {
+                        false
+                    } else {
+                        prev = Some(p);
+                        true
+                    }
+                }
+            }
+        })
+    }
+
+    pub fn add_point(&mut self, point: Point<T>) {
+        self.points.push(point);
+    }
+
+    pub fn points(&self) -> &[Point<T>] {
+        &self.points
+    }
+
     pub fn lines(&self) -> LinesFromPolyIterator<T> {
         let points_len = self.points.len();
         let first_and_last = if points_len != 0 {

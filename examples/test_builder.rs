@@ -10,12 +10,13 @@ use lux::color::{GREEN, RED};
 use lux::interactive::Event;
 use parrot::geom::*;
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 enum Geometry {
     Circle(Circle<f32>),
     Rect(Rect<f32>),
     Line(LineSegment<f32>),
     Point(Point<f32>),
+    Polygon(Poly<f32>),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -24,6 +25,7 @@ enum DrawGeom {
     Rect,
     Line,
     Point,
+    Polygon
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -82,12 +84,12 @@ impl Scene {
     }
 
     fn calculate(&self) -> Option<CalcReturn> {
-        let (a, b) = match (self.selected_a, self.selected_b) {
+        let (a, b) = match (self.selected_a.clone(), self.selected_b.clone()) {
             (Some(a), Some(b)) => (a, b),
             _ => return None,
         };
 
-        match (self.operation, a, b) {
+        match (self.operation, a.clone(), b.clone()) {
             (Operation::Intersection, Geometry::Line(l1), Geometry::Line(l2)) => {
                 let result = CalcReturn::IntersectionPoints(a, b, l1.intersects(l2));
                 println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
@@ -140,6 +142,10 @@ impl Scene {
                     self.drawing = DrawGeom::Point;
                     self.last_click = None;
                 }
+                Event::KeyPressed(_, Some('o'), _) => {
+                    self.drawing = DrawGeom::Polygon;
+                    self.last_click = None;
+                }
                 Event::KeyPressed(_, Some('c'), _) => {
                     self.drawing = DrawGeom::Circle;
                     self.last_click = None;
@@ -172,6 +178,18 @@ impl Scene {
             (_, &mut Some(_), &mut Some(_), last) => {
                 *last = None;
                 false
+            }
+            (DrawGeom::Polygon, a@&mut None, _, _) => {
+                let p = Point(x, y);
+                *a = Some(Geometry::Polygon(Poly::new(vec![p, p, p])));
+                true
+            }
+            (DrawGeom::Polygon, &mut Some(Geometry::Polygon(ref mut p)), _, _) => {
+                p.add_point(Point(x, y));
+                if p.points().len() == 5 {
+                    p.dedupe_consecutive_points();
+                }
+                true
             }
 
             (DrawGeom::Point, a@&mut None, b, _) => {
@@ -227,24 +245,27 @@ impl Scene {
     fn draw(&mut self, mut frame: Frame, (mx, my): (f32, f32)) {
         draw_point(Point(mx, my), &mut frame);
 
-        fn draw_selected(selected: Option<Geometry>, frame: &mut Frame) {
+        fn draw_selected(selected: Option<&Geometry>, frame: &mut Frame) {
             match selected {
-                Some(Geometry::Point(p)) => {
+                Some(&Geometry::Point(p)) => {
                     draw_point(p, frame);
                 }
-                Some(Geometry::Line(l)) => {
+                Some(&Geometry::Line(l)) => {
                     draw_line_segment(l, frame);
                 }
-                Some(Geometry::Circle(c)) => {
+                Some(&Geometry::Circle(c)) => {
                     draw_circle(c, frame);
+                }
+                Some(&Geometry::Polygon(ref p)) => {
+                    draw_polygon(p, frame);
                 }
                 Some(_) => {}
                 None => {}
             }
         }
 
-        draw_selected(self.selected_a, &mut frame);
-        draw_selected(self.selected_b, &mut frame);
+        draw_selected(self.selected_a.as_ref(), &mut frame);
+        draw_selected(self.selected_b.as_ref(), &mut frame);
 
         if self.selected_a.is_some() && self.selected_b.is_some() {
             match self.last_calculation_result.as_ref() {
@@ -312,6 +333,12 @@ fn draw_line_segment(LineSegment(p1, p2): LineSegment<f32>, frame: &mut Frame) {
     frame.draw_line(p1.0, p1.1, p2.0, p2.1, 2.0);
 }
 
+fn draw_polygon(poly: &Poly<f32>, frame: &mut Frame) {
+    for line in poly.lines() {
+        draw_line_segment(line, frame);
+    }
+}
+
 impl ::std::fmt::Debug for Geometry {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         match self {
@@ -322,7 +349,15 @@ impl ::std::fmt::Debug for Geometry {
             &Geometry::Line(LineSegment(Point(x1, y1), Point(x2, y2))) =>
                 write!(f, "LineSegment(Point({:.20}, {:.20}), Point({:.20}, {:.20}))", x1, y1, x2, y2),
             &Geometry::Point(Point(x, y)) =>
-                write!(f, "Point({:.20}, {:.20})", x, y)
+                write!(f, "Point({:.20}, {:.20})", x, y),
+            &Geometry::Polygon(ref poly) => {
+                try!(write!(f, "Polygon::new(vec!["));
+                for &Point(x, y) in poly.points() {
+                    try!(write!(f, "Point({:.20}, {:.20})", x, y));
+                }
+                write!(f, "])")
+            }
+
         }
     }
 }
