@@ -31,13 +31,15 @@ enum DrawGeom {
 #[derive(Copy, Clone, Debug)]
 enum Operation {
     Contains,
-    Intersection
+    Intersection,
+    ConvexHull,
 }
 
 #[derive(Clone, Debug)]
 enum CalcReturn {
     IntersectionPoints(Geometry, Geometry, Intersections<f32>),
     DoesContain(Geometry, Geometry, bool),
+    Hull(Poly<f32>, Poly<f32>),
 }
 
 struct Scene {
@@ -90,29 +92,28 @@ impl Scene {
         };
 
         match (self.operation, a.clone(), b.clone()) {
+            (Operation::ConvexHull, Geometry::Polygon(p), _) => {
+                let result = p.convex_hull();
+                Some(CalcReturn::Hull(p, result))
+            }
             (Operation::Intersection, Geometry::Line(l1), Geometry::Line(l2)) => {
                 let result = CalcReturn::IntersectionPoints(a, b, l1.intersects(l2));
-                println!("intersection of {:?} and {:?} is {:?}", l1, l2, l1.intersects(l2));
                 Some(result)
             }
             (Operation::Intersection, Geometry::Circle(c), Geometry::Line(l)) => {
                 let result = CalcReturn::IntersectionPoints(a, b, c.intersects(l));
-                println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
                 Some(result)
             }
             (Operation::Intersection, Geometry::Line(l), Geometry::Circle(c)) => {
                 let result = CalcReturn::IntersectionPoints(a, b, c.intersects(l));
-                println!("intersection of {:?} and {:?} is {:?}", l, c, l.intersects(c));
                 Some(result)
             }
             (Operation::Contains, Geometry::Circle(c1), Geometry::Circle(c2)) => {
                 let result = c1.contains(c2);
-                println!("contains of {:?} and {:?} is {:?}", c1, c2, result);
                 Some(CalcReturn::DoesContain(a, b, result))
             }
             (Operation::Contains, Geometry::Circle(c), Geometry::Point(p)) => {
                 let result = c.contains(p);
-                println!("contains of {:?} and {:?} is {:?}", c, p, result);
                 Some(CalcReturn::DoesContain(a, b, result))
             }
             (op, geo1, geo2) => {
@@ -160,6 +161,11 @@ impl Scene {
                 }
                 Event::KeyPressed(_, Some('k'), _) => {
                     self.operation = Operation::Contains;
+                    should_calculate = true;
+                }
+                Event::KeyPressed(_, Some('v'), _) => {
+                    self.operation = Operation::ConvexHull;
+                    println!("set to convex hull");
                     should_calculate = true;
                 }
                 Event::KeyPressed(_, Some(' '), _) => {
@@ -269,6 +275,9 @@ impl Scene {
 
         if self.selected_a.is_some() && self.selected_b.is_some() {
             match self.last_calculation_result.as_ref() {
+                Some(&CalcReturn::Hull(ref from, ref into)) => {
+                    draw_polygon(into, &mut frame, BLUE);
+                }
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::None)) => { }
                 Some(&CalcReturn::IntersectionPoints(_, _, Intersections::One(a))) => {
                     draw_point(a, &mut frame, BLUE);
@@ -293,9 +302,11 @@ impl Scene {
     fn produce_test_case(&self) {
         const EPSILON: &'static str = "0.0000001f32";
         let assertion = match self.last_calculation_result.clone() {
+            Some(CalcReturn::Hull(a, b)) => {
+                format!("assert!({:.20?}.convex_hull().almost_eq_epsilon({:?}, {}));", a, b, EPSILON)
+            }
             Some(CalcReturn::IntersectionPoints(a, b, pts)) => {
                 format!("assert!({:.20?}.intersects({:.20?}).almost_eq_epsilon({:?}, {}));", a, b, pts, EPSILON)
-                //format!("println!(\"{{:.20?}}\", {:.20?}.intersects({:.20?})); println!(\"{{:.20?}}\", {:.20?});", a, b, pts)
             }
 
             Some(CalcReturn::DoesContain(a, b, c)) => {

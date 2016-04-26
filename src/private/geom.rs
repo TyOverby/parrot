@@ -69,6 +69,10 @@ impl <T: Number> Vector<T> {
     pub fn dot(self, Vector(ox, oy): Vector<T>) -> T {
         self.0 * ox + self.1 * oy
     }
+
+    pub fn angle_to(self, other: Vector<T>) -> T {
+        (self.dot(other) / (self.magnitude() * self.magnitude())).acos()
+    }
 }
 
 impl <T: Number> LineSegment<T> {
@@ -200,6 +204,37 @@ impl <T: Number> Poly<T> {
             first_and_last: first_and_last,
         }
     }
+
+    pub fn convex_hull(&self) -> Poly<T> {
+        let points = self.points();
+        let mut lowest = None;
+        for point in points.iter().cloned() {
+            lowest = match (lowest, point) {
+                (None, point) => Some(point),
+                (Some(p1), p2) => Some(if p1 < p2 {p1} else {p2})
+            };
+        }
+
+        let mut on_hull = lowest.unwrap();
+        let mut i = 0;
+        let mut out = vec![];
+
+        loop {
+            out.push(on_hull);
+            let mut endpoint = points[0];
+            for j in 1 .. points.len() {
+                if endpoint.almost_eq(on_hull) || (points[j] - out[i]).cross(endpoint - out[i]) < T::zero() {
+                    endpoint = points[j];
+                }
+            }
+            i += 1;
+            on_hull = endpoint;
+            if endpoint == out[0] { break; }
+        }
+
+        println!("cvh has {} points", out.len());
+        Poly::new(out)
+    }
 }
 
 impl <N: Number> Intersects<LineSegment<N>, N> for LineSegment<N> {
@@ -215,7 +250,41 @@ impl <N: Number> Intersects<LineSegment<N>, N> for LineSegment<N> {
         let s = (-s1_y * (p0_x - p2_x) + s1_x * (p0_y - p2_y)) / (-s2_x * s1_y + s1_x * s2_y);
         let t = ( s2_x * (p0_y - p2_y) - s2_y * (p0_x - p2_x)) / (-s2_x * s1_y + s1_x * s2_y);
 
-        if s >= N::zero() && s <= N::one() && t >= N::zero() && t <= N::one() {
+        if s.is_nan() && t.is_nan() {
+            match (other.distance(self.0).almost_eq(N::zero()),
+                   other.distance(self.1).almost_eq(N::zero()),
+                   self.distance(other.0).almost_eq(N::zero()),
+                   self.distance(other.1).almost_eq(N::zero())) {
+                // Line segments are the same
+                (true, true, true, true) => Intersections::None,
+
+                // self is contained within other
+                (true, true, false, false) => Intersections::Two(self.0, self.1),
+                // self has one point inside other, and shares another point with other
+                (true, true, true, false) => Intersections::One(if (self.0).almost_eq(other.0) { self.1 } else { self.0 }),
+                (true, true, false, true) => Intersections::One(if (self.0).almost_eq(other.1) { self.1 } else { self.0 }),
+
+                // other is contained within self
+                (false, false, true, true) => Intersections::Two(other.0, other.1),
+                // other has one point inside self, and shares another point with self
+                (true, false, true, true) => Intersections::One(if (other.0).almost_eq(self.0) { other.1 } else { other.0 }),
+                (false, true, true, true) => Intersections::One(if (other.0).almost_eq(self.1) { other.1 } else { other.0 }),
+
+                // they form a longer line
+                (true, false, true, false) |
+                (false, true, false, true) |
+                (true, false, false, true) |
+                (false, true, true, false) => Intersections::None,
+
+                // They aren't even close to each other
+                (false, false, false, false) => Intersections::None,
+
+                (true, false, false, false) |
+                (false, true, false, false) |
+                (false, false, true, false) |
+                (false, false, false, true) => panic!("these lines showed up as being colinear but they were not: {:?} {:?}", self, other),
+            }
+        } else if s >= N::zero() && s <= N::one() && t >= N::zero() && t <= N::one() {
             Intersections::One(Point(p0_x + (t * s1_x), p0_y + (t * s1_y)))
         } else {
             Intersections::None
@@ -356,13 +425,13 @@ impl <T: Number> Contains<Circle<T>> for Circle<T> {
         let Circle(Point(sx, sy), sr) = self;
 
         let radius_diff = sr - or;
-		if (radius_diff < T::zero()) { return false; }
+		if radius_diff < T::zero() { return false; }
 
 		let dx = sx - ox;
 		let dy = sy - oy;
 		let dst = dx * dx + dy * dy;
 		let radius_sum = sr + or;
-		return (!(radius_diff * radius_diff < dst) && (dst < radius_sum * radius_sum));
+		return !(radius_diff * radius_diff < dst) && (dst < radius_sum * radius_sum);
     }
 }
 
@@ -379,7 +448,7 @@ impl <T:Number> Distance<LineSegment<T>, T> for Point<T> {
     fn distance_squared(self, LineSegment(v, w): LineSegment<T>) -> T {
         use ::num::{Zero, One};
         let l2 = v.distance_squared(w);
-        if l2 == Zero::zero() { //  TODO: epsilon
+        if l2 == Zero::zero() { // TODO: epsilon
             return self.distance_squared(v);
         }
         let t = ((self.0 - v.0) * (w.0 - v.0) + (self.1 - v.1) * (w.1 - v.1)) / l2;
@@ -393,7 +462,6 @@ impl <T:Number> Distance<LineSegment<T>, T> for Point<T> {
                 v.1 + t * (w.1 - v.1)
             ))
         }
-
     }
 }
 
@@ -509,7 +577,9 @@ impl <T: Number> AlmostEq<T> for LineSegment<T> {
     fn almost_eq_epsilon(self, LineSegment(op1, op2): LineSegment<T>, epsilon: T) -> bool {
         let LineSegment(sp1, sp2) = self;
         sp1.almost_eq_epsilon(op1, epsilon) &&
-        sp2.almost_eq_epsilon(op2, epsilon)
+        sp2.almost_eq_epsilon(op2, epsilon) ||
+        sp1.almost_eq_epsilon(op2, epsilon) &&
+        sp2.almost_eq_epsilon(op1, epsilon)
     }
 }
 
