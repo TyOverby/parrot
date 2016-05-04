@@ -9,6 +9,10 @@ pub trait Distance<T, N: Number> {
     }
 }
 
+pub trait Translate<N: Number> {
+    fn translate(self, x: N, y: N) -> Self;
+}
+
 pub trait Intersects<T, N: Number> {
     fn intersects(self, other: T) -> Intersections<N>;
 }
@@ -102,6 +106,12 @@ impl <T: Number> Point<T> {
 }
 
 impl <T: Number> Rect<T> {
+    pub fn xywh(x: T, y: T, w: T, h: T) -> Rect<T> {
+        let p = Point(x, y);
+        let v = Vector(w, h);
+        Rect(p, p + v)
+    }
+
     pub fn null_at(p: Point<T>) -> Rect<T> {
         Rect(p, p)
     }
@@ -113,11 +123,40 @@ impl <T: Number> Rect<T> {
 
     pub fn height(self) -> T {
         let Rect(Point(_, top), Point(_, bottom)) = self;
-        top - bottom
+        bottom - top
     }
 
     pub fn area(self) -> T {
         self.width() * self.height()
+    }
+
+    pub fn constrain_to(self, other: Rect<T>) -> Rect<T> {
+        let Point(x1, y1) = self.0;
+        let Point(x2, y2) = other.0;
+        let Point(x3, y3) = other.1;
+
+        let mut xo = x1;
+        let mut yo = y1;
+        let wo = self.width();
+        let ho = self.height();
+
+        if x1 < x2 {
+            xo = x2;
+        }
+
+        if y1 < y2 {
+            yo = y2;
+        }
+
+        if xo + wo > x3 {
+            xo = x3 - wo;
+        }
+
+        if yo + wo > y3 {
+            yo = y3 - wo;
+        }
+
+        Rect::xywh(xo, yo, wo, ho)
     }
 
     pub fn expand_to_include(&mut self, Point(px, py): Point<T>) {
@@ -617,5 +656,18 @@ impl <T: Number> ::std::fmt::Debug for Intersections<T> {
                 write!(f, "])")
             }
         }
+    }
+}
+
+impl <N: Number> Translate<N> for Point<N> {
+    fn translate(self, x: N, y: N) -> Point<N> {
+        Point(self.0 + x, self.1 + y)
+    }
+}
+
+impl <N: Number> Translate<N> for Rect<N> {
+    fn translate(self, x: N, y: N) -> Rect<N> {
+        let Rect(p1, p2) = self;
+        Rect(p1.translate(x, y), p2.translate(x, y))
     }
 }
