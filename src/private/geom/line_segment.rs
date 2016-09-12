@@ -1,5 +1,11 @@
 use super::*;
 
+pub enum LineSegmentSplit<T: Number> {
+    NoBreak(LineSegment<T>),
+    Bisected(LineSegment<T>, LineSegment<T>),
+    Overlapping(LineSegment<T>, LineSegment<T>, LineSegment<T>),
+}
+
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct LineSegment<T: Number>(pub Point<T>, pub Point<T>);
 
@@ -106,5 +112,19 @@ impl <T: Number> AlmostEq<T> for LineSegment<T> {
         sp2.almost_eq_epsilon(op2, epsilon) ||
         sp1.almost_eq_epsilon(op2, epsilon) &&
         sp2.almost_eq_epsilon(op1, epsilon)
+    }
+}
+
+impl <T: Number> SplitBy<LineSegment<T>> for LineSegment<T> {
+    type Out = LineSegmentSplit<T>;
+    fn split_by(self, other: LineSegment<T>) -> LineSegmentSplit<T> {
+        let LineSegment(f, l) = self;
+        match self.intersects(other) {
+            Intersections::One(b) =>
+                LineSegmentSplit::Bisected(LineSegment(f, b), LineSegment(b, l)),
+            Intersections::Two(a, b) if a != f && b != l => 
+                LineSegmentSplit::Overlapping(LineSegment(f, a), LineSegment(a, b), LineSegment(b, l)),
+            _ => LineSegmentSplit::NoBreak(self),
+        }
     }
 }

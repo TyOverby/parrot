@@ -129,4 +129,3 @@ impl <'a, T: Number> Bounded<T> for &'a Poly<T> {
         self.aabb
     }
 }
-

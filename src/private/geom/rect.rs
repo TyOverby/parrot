@@ -1,4 +1,4 @@
-pub use super::*;
+use super::*;
 
 #[derive(Debug, Copy, Clone, PartialEq, PartialOrd)]
 pub struct Rect<T: Number>(pub Point<T>, pub Point<T>);
@@ -72,6 +72,18 @@ impl <T: Number> Rect<T> {
         let Point(_, bottom) = self.bottom_right();
         let mov = Vector(T::zero(), y - bottom);
         self.translate_v(mov)
+    }
+
+    pub fn set_width(self, w: T) -> Rect<T> {
+        let Point(x, _) = self.top_left();
+        let Point(_, ry) = self.bottom_right();
+        Rect(self.top_left(), Point(x + w, ry))
+    }
+
+    pub fn set_height(self, h: T) -> Rect<T> {
+        let Point(_, y) = self.top_left();
+        let Point(rx, _) = self.bottom_right();
+        Rect(self.top_left(), Point(rx, y + h))
     }
 
     pub fn null_at(p: Point<T>) -> Rect<T> {

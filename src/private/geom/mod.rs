@@ -41,6 +41,11 @@ pub trait Intersects<T, N: Number> {
     fn intersects(self, other: T) -> Intersections<N>;
 }
 
+pub trait SplitBy<T> {
+    type Out;
+    fn split_by(self, other: T) -> Self::Out;
+}
+
 pub trait Bounded<T: Number> {
     fn aabb(self) -> Rect<T>;
 }
